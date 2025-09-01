@@ -80,15 +80,17 @@ function App() {
       }]);
     } else if (choice === 'update') {
       try {
+        console.log('Attempting to update item:', conflictItem);
         await updateExistingItem(conflictItem);
         setResults(prev => [...prev, { 
           type: 'success', 
           message: `✅ Updated ${formData.type === 'secrets' ? 'secret' : 'variable'}: ${conflictItem.name}` 
         }]);
       } catch (err) {
+        console.error('Error updating item:', err);
         setResults(prev => [...prev, { 
           type: 'error', 
-          message: `❌ Failed to update ${conflictItem.name}: ${err.response?.data?.message || err.message}` 
+          message: `❌ Failed to update ${formData.type === 'secrets' ? 'secret' : 'variable'} "${conflictItem?.name || 'unknown'}": ${err.response?.data?.message || err.message}` 
         }]);
       }
     }
@@ -116,6 +118,12 @@ function App() {
   };
 
   const updateExistingItem = async (item) => {
+    console.log('Updating existing item:', item);
+    
+    if (!item || !item.name || !item.name.trim()) {
+      throw new Error('Invalid item: missing name property');
+    }
+
     const repoResponse = await axios.get(`https://api.github.com/repos/${formData.owner}/${formData.repo}`, {
       headers: {
         Authorization: `Bearer ${formData.token}`,
@@ -146,6 +154,7 @@ function App() {
         key_id: publicKeyResponse.data.key_id
       };
 
+      console.log(`Updating secret: ${item.name}`);
       await axios.put(
         `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/secrets/${item.name}`,
         payload,
@@ -158,19 +167,41 @@ function App() {
         }
       );
     } else {
-      const payload = { name: item.name, value: item.value };
-      await axios.put(
-        `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables/${item.name}`,
-        payload,
-        {
-          headers: {
-            Authorization: `Bearer ${formData.token}`,
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json"
+      // For environment variables, use PATCH method
+      const payload = { value: item.value }; // Only send the value, name is in URL
+      
+      console.log(`Updating variable: ${item.name} with endpoint: /repositories/${repoId}/environments/${formData.environment}/variables/${item.name}`);
+      
+      try {
+        await axios.patch(
+          `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables/${item.name}`,
+          payload,
+          {
+            headers: {
+              Authorization: `Bearer ${formData.token}`,
+              Accept: "application/vnd.github+json",
+              "Content-Type": "application/json"
+            }
           }
-        }
-      );
+        );
+      } catch (patchError) {
+        console.log('PATCH failed, trying with repos endpoint:', patchError.response?.status);
+        // Try alternative endpoint format
+        await axios.patch(
+          `https://api.github.com/repos/${formData.owner}/${formData.repo}/environments/${formData.environment}/variables/${item.name}`,
+          payload,
+          {
+            headers: {
+              Authorization: `Bearer ${formData.token}`,
+              Accept: "application/vnd.github+json",
+              "Content-Type": "application/json"
+            }
+          }
+        );
+      }
     }
+    
+    console.log(`Successfully updated ${formData.type === 'secrets' ? 'secret' : 'variable'}: ${item.name}`);
   };
 
   const processRemainingItems = async (itemsToProcess, startIndex) => {
