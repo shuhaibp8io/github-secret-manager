@@ -190,44 +190,73 @@ function App() {
       const item = itemsToProcess[i];
       const currentIdx = startIndex + i;
       
+      console.log(`Processing item ${i + 1}/${itemsToProcess.length}:`, item);
+      
+      // Validate item has required properties
+      if (!item.name || !item.name.trim()) {
+        setResults(prev => [...prev, { 
+          type: 'error', 
+          message: `❌ Invalid item: missing name property` 
+        }]);
+        continue;
+      }
+      
       setProgress(prev => ({ 
         ...prev, 
         current: 3 + currentIdx, 
         status: `Processing ${formData.type === 'secrets' ? 'secret' : 'variable'}: ${item.name}...` 
       }));
 
-      try {
-        if (formData.type === 'secrets') {
-          // Secrets always use PUT (overwrite)
+      if (formData.type === 'secrets') {
+        // Secrets always use PUT (overwrite)
+        try {
           await updateExistingItem(item);
           setResults(prev => [...prev, { 
             type: 'success', 
-            message: `✅ ${formData.type === 'secrets' ? 'Secret' : 'Variable'} ${item.name} processed successfully` 
+            message: `✅ Secret ${item.name} processed successfully` 
           }]);
-        } else {
-          // For variables, try POST first
-          const payload = { name: item.name, value: item.value };
-          
-          try {
-            await axios.post(
-              `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables`,
-              payload,
-              {
-                headers: {
-                  Authorization: `Bearer ${formData.token}`,
-                  Accept: "application/vnd.github+json",
-                  "Content-Type": "application/json"
-                }
+        } catch (err) {
+          setResults(prev => [...prev, { 
+            type: 'error', 
+            message: `❌ Failed to process secret ${item.name}: ${err.response?.data?.message || err.message}` 
+          }]);
+        }
+      } else {
+        // For variables, try POST first
+        const payload = { name: item.name, value: item.value };
+        
+        try {
+          await axios.post(
+            `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables`,
+            payload,
+            {
+              headers: {
+                Authorization: `Bearer ${formData.token}`,
+                Accept: "application/vnd.github+json",
+                "Content-Type": "application/json"
               }
-            );
+            }
+          );
+          
+          setResults(prev => [...prev, { 
+            type: 'success', 
+            message: `✅ Variable ${item.name} created successfully` 
+          }]);
+        } catch (createError) {
+          console.log(`Error creating variable ${item.name}:`, {
+            status: createError.response?.status,
+            statusText: createError.response?.statusText,
+            data: createError.response?.data,
+            message: createError.message
+          });
+
+          // GitHub returns 422 for "already exists" errors
+          if (createError.response && (createError.response.status === 422 || createError.response.status === 409)) {
+            const errorMessage = createError.response?.data?.message || createError.message;
             
-            setResults(prev => [...prev, { 
-              type: 'success', 
-              message: `✅ Variable ${item.name} created successfully` 
-            }]);
-          } catch (createError) {
-            // If variable exists (422), ask user what to do
-            if (createError.response && createError.response.status === 422) {
+            // Check if it's specifically an "already exists" error
+            if (errorMessage.toLowerCase().includes('already exists') || errorMessage.toLowerCase().includes('conflict')) {
+              console.log(`Variable ${item.name} already exists, showing conflict modal`);
               setConflictItem(item);
               setPendingItems(itemsToProcess.slice(i + 1));
               setCurrentIndex(currentIdx);
@@ -235,16 +264,15 @@ function App() {
               setShowConflictModal(true);
               setProgress(prev => ({ ...prev, status: `Variable "${item.name}" already exists. Waiting for user decision...` }));
               return; // Stop processing until user decides
-            } else {
-              throw createError;
             }
           }
+          
+          // Other errors or non-conflict 422 errors
+          setResults(prev => [...prev, { 
+            type: 'error', 
+            message: `❌ Failed to create variable ${item.name}: ${createError.response?.data?.message || createError.message}` 
+          }]);
         }
-      } catch (err) {
-        setResults(prev => [...prev, { 
-          type: 'error', 
-          message: `❌ Failed to process ${item.name}: ${err.response?.data?.message || err.message}` 
-        }]);
       }
     }
 
@@ -653,12 +681,22 @@ function App() {
           )}
         </Modal>
 
-        {/* Conflict Resolution Modal */}
-        <Modal 
-          isOpen={showConflictModal} 
-          onClose={() => {}} // Prevent closing during conflict resolution
-          title={`${formData.type === 'secrets' ? 'Secret' : 'Variable'} Already Exists`}
-        >
+                  {/* Debug Info (remove in production) */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="fixed bottom-4 right-4 bg-black text-white text-xs p-2 rounded max-w-xs opacity-75">
+              <div>showConflictModal: {showConflictModal.toString()}</div>
+              <div>conflictItem: {conflictItem?.name || 'null'}</div>
+              <div>processingStopped: {processingStopped.toString()}</div>
+              <div>isProcessing: {isProcessing.toString()}</div>
+            </div>
+          )}
+
+          {/* Conflict Resolution Modal */}
+          <Modal 
+            isOpen={showConflictModal} 
+            onClose={() => {}} // Prevent closing during conflict resolution
+            title={`${formData.type === 'secrets' ? 'Secret' : 'Variable'} Already Exists`}
+          >
           <div className="text-center">
             <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100 mb-4">
               <XCircleIcon className="h-6 w-6 text-yellow-600" />
