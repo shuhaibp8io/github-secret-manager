@@ -176,25 +176,52 @@ function App() {
               continue;
             }
           } else {
-            // For variables, use the simple POST method
+            // For variables, try POST first, then PUT if it exists
             const payload = { name: item.name, value: item.value };
             
-            await axios.post(
-              `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables`,
-              payload,
-              {
-                headers: {
-                  Authorization: `Bearer ${formData.token}`,
-                  Accept: "application/vnd.github+json",
-                  "Content-Type": "application/json"
+            try {
+              // Try to create new variable
+              await axios.post(
+                `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables`,
+                payload,
+                {
+                  headers: {
+                    Authorization: `Bearer ${formData.token}`,
+                    Accept: "application/vnd.github+json",
+                    "Content-Type": "application/json"
+                  }
                 }
+              );
+            } catch (createError) {
+              // If variable already exists (422 error), try to update it
+              if (createError.response && createError.response.status === 422) {
+                setResults(prev => [...prev, { 
+                  type: 'warning', 
+                  message: `⚠️ Variable ${item.name} exists, updating...` 
+                }]);
+                
+                // Update existing variable using PUT
+                await axios.put(
+                  `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables/${item.name}`,
+                  payload,
+                  {
+                    headers: {
+                      Authorization: `Bearer ${formData.token}`,
+                      Accept: "application/vnd.github+json",
+                      "Content-Type": "application/json"
+                    }
+                  }
+                );
+              } else {
+                // Re-throw other errors
+                throw createError;
               }
-            );
+            }
           }
 
           setResults(prev => [...prev, { 
             type: 'success', 
-            message: `✅ Created ${formData.type === 'secrets' ? 'secret' : 'variable'}: ${item.name}` 
+            message: `✅ ${formData.type === 'secrets' ? 'Secret' : 'Variable'} ${item.name} processed successfully` 
           }]);
         } catch (err) {
           setResults(prev => [...prev, { 
