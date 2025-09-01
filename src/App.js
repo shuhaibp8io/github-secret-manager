@@ -21,6 +21,11 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showScopeInfo, setShowScopeInfo] = useState(false);
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [conflictItem, setConflictItem] = useState(null);
+  const [pendingItems, setPendingItems] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [processingStopped, setProcessingStopped] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -55,6 +60,197 @@ function App() {
     setResults([]);
     setProgress({ current: 0, total: 0, status: 'idle' });
     setShowModal(false);
+    setShowConflictModal(false);
+    setConflictItem(null);
+    setPendingItems([]);
+    setCurrentIndex(0);
+    setProcessingStopped(false);
+  };
+
+  const handleConflictChoice = async (choice) => {
+    if (!conflictItem) return;
+
+    setShowConflictModal(false);
+    setProcessingStopped(false);
+
+    if (choice === 'skip') {
+      setResults(prev => [...prev, { 
+        type: 'warning', 
+        message: `⏭️ Skipped existing ${formData.type === 'secrets' ? 'secret' : 'variable'}: ${conflictItem.name}` 
+      }]);
+    } else if (choice === 'update') {
+      try {
+        await updateExistingItem(conflictItem);
+        setResults(prev => [...prev, { 
+          type: 'success', 
+          message: `✅ Updated ${formData.type === 'secrets' ? 'secret' : 'variable'}: ${conflictItem.name}` 
+        }]);
+      } catch (err) {
+        setResults(prev => [...prev, { 
+          type: 'error', 
+          message: `❌ Failed to update ${conflictItem.name}: ${err.response?.data?.message || err.message}` 
+        }]);
+      }
+    }
+
+    setConflictItem(null);
+    
+    // Continue with remaining items
+    if (pendingItems.length > 0) {
+      const nextItems = pendingItems.slice(1);
+      const nextIndex = currentIndex + 1;
+      setPendingItems(nextItems);
+      setCurrentIndex(nextIndex);
+      
+      if (nextItems.length > 0) {
+        await processRemainingItems(nextItems, nextIndex);
+      } else {
+        // All items processed
+        setProgress(prev => ({ ...prev, status: 'completed' }));
+        setIsProcessing(false);
+      }
+    } else {
+      setProgress(prev => ({ ...prev, status: 'completed' }));
+      setIsProcessing(false);
+    }
+  };
+
+  const updateExistingItem = async (item) => {
+    const repoResponse = await axios.get(`https://api.github.com/repos/${formData.owner}/${formData.repo}`, {
+      headers: {
+        Authorization: `Bearer ${formData.token}`,
+        Accept: "application/vnd.github+json"
+      }
+    });
+    const repoId = repoResponse.data.id;
+
+    if (formData.type === 'secrets') {
+      await sodium.ready;
+      const publicKeyResponse = await axios.get(
+        `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/secrets/public-key`,
+        {
+          headers: {
+            Authorization: `Bearer ${formData.token}`,
+            Accept: "application/vnd.github+json"
+          }
+        }
+      );
+      
+      const binkey = sodium.from_base64(publicKeyResponse.data.key, sodium.base64_variants.ORIGINAL);
+      const binsec = sodium.from_string(item.value);
+      const encryptedBytes = sodium.crypto_box_seal(binsec, binkey);
+      const encrypted_value = sodium.to_base64(encryptedBytes, sodium.base64_variants.ORIGINAL);
+
+      const payload = {
+        encrypted_value,
+        key_id: publicKeyResponse.data.key_id
+      };
+
+      await axios.put(
+        `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/secrets/${item.name}`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${formData.token}`,
+            Accept: "application/vnd.github+json",
+            "Content-Type": "application/json"
+          }
+        }
+      );
+    } else {
+      const payload = { name: item.name, value: item.value };
+      await axios.put(
+        `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables/${item.name}`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${formData.token}`,
+            Accept: "application/vnd.github+json",
+            "Content-Type": "application/json"
+          }
+        }
+      );
+    }
+  };
+
+  const processRemainingItems = async (itemsToProcess, startIndex) => {
+    if (processingStopped) return;
+
+    const repoResponse = await axios.get(`https://api.github.com/repos/${formData.owner}/${formData.repo}`, {
+      headers: {
+        Authorization: `Bearer ${formData.token}`,
+        Accept: "application/vnd.github+json"
+      }
+    });
+    const repoId = repoResponse.data.id;
+
+    for (let i = 0; i < itemsToProcess.length; i++) {
+      if (processingStopped) return;
+
+      const item = itemsToProcess[i];
+      const currentIdx = startIndex + i;
+      
+      setProgress(prev => ({ 
+        ...prev, 
+        current: 3 + currentIdx, 
+        status: `Processing ${formData.type === 'secrets' ? 'secret' : 'variable'}: ${item.name}...` 
+      }));
+
+      try {
+        if (formData.type === 'secrets') {
+          // Secrets always use PUT (overwrite)
+          await updateExistingItem(item);
+          setResults(prev => [...prev, { 
+            type: 'success', 
+            message: `✅ ${formData.type === 'secrets' ? 'Secret' : 'Variable'} ${item.name} processed successfully` 
+          }]);
+        } else {
+          // For variables, try POST first
+          const payload = { name: item.name, value: item.value };
+          
+          try {
+            await axios.post(
+              `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables`,
+              payload,
+              {
+                headers: {
+                  Authorization: `Bearer ${formData.token}`,
+                  Accept: "application/vnd.github+json",
+                  "Content-Type": "application/json"
+                }
+              }
+            );
+            
+            setResults(prev => [...prev, { 
+              type: 'success', 
+              message: `✅ Variable ${item.name} created successfully` 
+            }]);
+          } catch (createError) {
+            // If variable exists (422), ask user what to do
+            if (createError.response && createError.response.status === 422) {
+              setConflictItem(item);
+              setPendingItems(itemsToProcess.slice(i + 1));
+              setCurrentIndex(currentIdx);
+              setProcessingStopped(true);
+              setShowConflictModal(true);
+              setProgress(prev => ({ ...prev, status: `Variable "${item.name}" already exists. Waiting for user decision...` }));
+              return; // Stop processing until user decides
+            } else {
+              throw createError;
+            }
+          }
+        }
+      } catch (err) {
+        setResults(prev => [...prev, { 
+          type: 'error', 
+          message: `❌ Failed to process ${item.name}: ${err.response?.data?.message || err.message}` 
+        }]);
+      }
+    }
+
+    // All items completed
+    setProgress(prev => ({ ...prev, status: 'completed' }));
+    setIsProcessing(false);
   };
 
   const createItems = async () => {
@@ -72,8 +268,12 @@ function App() {
     // Open modal and reset state
     setShowModal(true);
     setIsProcessing(true);
+    setProcessingStopped(false);
     setProgress({ current: 0, total: validItems.length + 2, status: 'Initializing...' });
     setResults([]);
+    setPendingItems([]);
+    setCurrentIndex(0);
+    setConflictItem(null);
 
     try {
       // Step 1: Get repo ID
@@ -120,125 +320,15 @@ function App() {
         }
       }
 
-      // Step 3: Create items (secrets or variables)
-      for (let i = 0; i < validItems.length; i++) {
-        const item = validItems[i];
-        setProgress(prev => ({ 
-          ...prev, 
-          current: 3 + i, 
-          status: `Creating ${formData.type === 'secrets' ? 'secret' : 'variable'}: ${item.name}...` 
-        }));
+      // Step 3: Process items
+      await processRemainingItems(validItems, 0);
 
-        try {
-          if (formData.type === 'secrets') {
-            // For secrets, we need proper encryption using libsodium
-            try {
-              await sodium.ready; // Ensure sodium is ready
-              
-              const publicKeyResponse = await axios.get(
-                `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/secrets/public-key`,
-                {
-                  headers: {
-                    Authorization: `Bearer ${formData.token}`,
-                    Accept: "application/vnd.github+json"
-                  }
-                }
-              );
-              
-              // Proper libsodium encryption
-              const binkey = sodium.from_base64(publicKeyResponse.data.key, sodium.base64_variants.ORIGINAL);
-              const binsec = sodium.from_string(item.value);
-              const encryptedBytes = sodium.crypto_box_seal(binsec, binkey);
-              const encrypted_value = sodium.to_base64(encryptedBytes, sodium.base64_variants.ORIGINAL);
-
-              const payload = {
-                encrypted_value,
-                key_id: publicKeyResponse.data.key_id
-              };
-
-              // Use PUT for secrets
-              await axios.put(
-                `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/secrets/${item.name}`,
-                payload,
-                {
-                  headers: {
-                    Authorization: `Bearer ${formData.token}`,
-                    Accept: "application/vnd.github+json",
-                    "Content-Type": "application/json"
-                  }
-                }
-              );
-            } catch (keyError) {
-              setResults(prev => [...prev, { 
-                type: 'error', 
-                message: `❌ Failed to encrypt secret ${item.name}: ${keyError.response?.data?.message || keyError.message}` 
-              }]);
-              continue;
-            }
-          } else {
-            // For variables, try POST first, then PUT if it exists
-            const payload = { name: item.name, value: item.value };
-            
-            try {
-              // Try to create new variable
-              await axios.post(
-                `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables`,
-                payload,
-                {
-                  headers: {
-                    Authorization: `Bearer ${formData.token}`,
-                    Accept: "application/vnd.github+json",
-                    "Content-Type": "application/json"
-                  }
-                }
-              );
-            } catch (createError) {
-              // If variable already exists (422 error), try to update it
-              if (createError.response && createError.response.status === 422) {
-                setResults(prev => [...prev, { 
-                  type: 'warning', 
-                  message: `⚠️ Variable ${item.name} exists, updating...` 
-                }]);
-                
-                // Update existing variable using PUT
-                await axios.put(
-                  `https://api.github.com/repositories/${repoId}/environments/${formData.environment}/variables/${item.name}`,
-                  payload,
-                  {
-                    headers: {
-                      Authorization: `Bearer ${formData.token}`,
-                      Accept: "application/vnd.github+json",
-                      "Content-Type": "application/json"
-                    }
-                  }
-                );
-              } else {
-                // Re-throw other errors
-                throw createError;
-              }
-            }
-          }
-
-          setResults(prev => [...prev, { 
-            type: 'success', 
-            message: `✅ ${formData.type === 'secrets' ? 'Secret' : 'Variable'} ${item.name} processed successfully` 
-          }]);
-        } catch (err) {
-          setResults(prev => [...prev, { 
-            type: 'error', 
-            message: `❌ Failed to create ${item.name}: ${err.response?.data?.message || err.message}` 
-          }]);
-        }
-      }
-
-      setProgress(prev => ({ ...prev, status: 'completed' }));
     } catch (error) {
       setResults(prev => [...prev, { 
         type: 'error', 
         message: `❌ Error: ${error.response?.data?.message || error.message}` 
       }]);
       setProgress(prev => ({ ...prev, status: 'error' }));
-    } finally {
       setIsProcessing(false);
     }
   };
@@ -544,24 +634,81 @@ function App() {
               </div>
             )}
 
-            {/* Modal Actions */}
-            {!isProcessing && results.length > 0 && (
-              <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={clearForm}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                >
-                  Start New
-                </button>
+                      {/* Modal Actions */}
+          {!isProcessing && results.length > 0 && !showConflictModal && (
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+              <button
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={clearForm}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Start New
+              </button>
+            </div>
+          )}
+        </Modal>
+
+        {/* Conflict Resolution Modal */}
+        <Modal 
+          isOpen={showConflictModal} 
+          onClose={() => {}} // Prevent closing during conflict resolution
+          title={`${formData.type === 'secrets' ? 'Secret' : 'Variable'} Already Exists`}
+        >
+          <div className="text-center">
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100 mb-4">
+              <XCircleIcon className="h-6 w-6 text-yellow-600" />
+            </div>
+            
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {formData.type === 'secrets' ? 'Secret' : 'Variable'} "{conflictItem?.name}" Already Exists
+            </h3>
+            
+            <p className="text-sm text-gray-600 mb-6">
+              A {formData.type === 'secrets' ? 'secret' : 'variable'} with this name already exists in the <strong>{formData.environment}</strong> environment. 
+              What would you like to do?
+            </p>
+
+            {conflictItem && (
+              <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
+                <div className="text-xs font-medium text-gray-500 mb-1">Current Value:</div>
+                <div className="bg-white rounded border px-3 py-2 text-sm font-mono text-gray-900 break-all">
+                  {formData.type === 'secrets' ? '••••••••••••••••' : conflictItem.value}
+                </div>
+                <div className="text-xs text-gray-500 mt-2">
+                  {formData.type === 'secrets' ? 'Secret values are always hidden for security' : 'This will replace the existing value'}
+                </div>
               </div>
             )}
-          </Modal>
+
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => handleConflictChoice('skip')}
+                className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
+              >
+                <XCircleIcon className="h-4 w-4" />
+                Skip This Item
+              </button>
+              <button
+                onClick={() => handleConflictChoice('update')}
+                className="px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors flex items-center gap-2"
+              >
+                <CheckCircleIcon className="h-4 w-4" />
+                Update/Overwrite
+              </button>
+            </div>
+
+            <div className="text-xs text-gray-500 mt-4">
+              {pendingItems.length > 0 && (
+                <>Still {pendingItems.length} item(s) remaining to process after this decision.</>
+              )}
+            </div>
+          </div>
+        </Modal>
         </div>
       </div>
     </div>
