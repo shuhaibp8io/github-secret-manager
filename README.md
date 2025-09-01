@@ -1,70 +1,203 @@
-# Getting Started with Create React App
+# GitHub Secrets & Variables Manager
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A modern React frontend application for managing GitHub repository secrets and environment variables with a beautiful UI.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+✨ **Modern Modal UI**: Clean, responsive design with professional modal interface
+🔐 **Security**: Token input with show/hide functionality
+📊 **Progress Tracking**: Real-time progress bar and status updates in modal
+🎯 **Flexible**: Support for both secrets and variables
+➕ **Dynamic Management**: Add/remove key-value pairs dynamically
+🧹 **Persistence**: Data persists until manually cleared
+🚀 **Real-time Feedback**: Detailed success/error messages with progress log
+🎨 **Enhanced UX**: Modern modal popup for progress tracking
+📋 **Scope Guidance**: Built-in GitHub token scope requirements
 
-### `npm start`
+## Getting Started
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### Prerequisites
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+- Node.js (v14 or higher)
+- npm or yarn
+- GitHub Personal Access Token with appropriate permissions
 
-### `npm test`
+### Installation
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+1. Clone or navigate to the project directory:
+   ```bash
+   cd github-secrets-manager
+   ```
 
-### `npm run build`
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+3. Start the development server:
+   ```bash
+   npm start
+   ```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Usage
 
-### `npm run eject`
+### Required GitHub Token Permissions
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Your GitHub Personal Access Token needs the following scopes (the app displays this information):
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+#### For Repository Secrets & Variables:
+- **`repo`** - Full control of private repositories (required for secrets and variables)
+- **`public_repo`** - Access public repositories (if working with public repos only)
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+#### For Organization-level (Optional):
+- **`admin:org`** - Required for organization-level secrets and variables
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+#### Important Notes:
+- **Secrets vs Variables**: Both use the same scopes, but secrets require proper encryption
+- **Environment Variables**: Require repository access to create/manage environments
+- **Public vs Private**: Public repos may only need `public_repo` scope
+- **Organizations**: Organization-level management requires additional `admin:org` scope
 
-## Learn More
+### Using the Application
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+1. **Enter your credentials**:
+   - Personal Access Token (PAT)
+   - Repository Owner (username or organization)
+   - Repository Name
+   - Environment Name (e.g., production, staging, development)
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+2. **Choose type**:
+   - **Variables**: For non-sensitive configuration data
+   - **Secrets**: For sensitive data (passwords, API keys, etc.)
 
-### Code Splitting
+3. **Add key-value pairs**:
+   - Click "Add Item" to create new pairs
+   - Fill in the key name and value
+   - Use the trash icon to remove pairs (minimum 1 required)
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+4. **Create items**:
+   - Click "Create Variables/Secrets" to open the progress modal
+   - Watch the real-time progress with modern progress bar
+   - View detailed progress log with success/error messages
+   - Modal shows live status updates for each operation
 
-### Analyzing the Bundle Size
+5. **Monitor progress**:
+   - Progress modal opens automatically when creation starts
+   - Real-time progress bar with percentage completion
+   - Detailed log shows each step with color-coded results
+   - Option to close modal or start new batch when complete
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+6. **Clear form** (optional):
+   - Click "Clear" to reset all fields, results, and close modal
 
-### Making a Progressive Web App
+## Modern UI Features
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+### Professional Modal Interface
+- **Progress Modal**: Operations run in a dedicated modal popup
+- **Real-time Updates**: Live progress bar with percentage completion
+- **Detailed Logging**: Color-coded progress log with success/error/warning messages
+- **Clean Design**: Modern gradients, shadows, and smooth animations
+- **Responsive**: Works perfectly on desktop and mobile devices
 
-### Advanced Configuration
+### GitHub Scope Guidance
+- **Built-in Help**: Expandable scope requirements section
+- **Clear Instructions**: Detailed explanations for each required scope  
+- **Context-Sensitive**: Different scopes for different use cases
+- **Security Warnings**: Clear notes about proper secret encryption
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## How It Works
 
-### Deployment
+The application follows GitHub's API workflow:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+1. **Repository Validation**: Gets repository ID and validates access
+2. **Environment Management**: Checks if environment exists, creates if needed
+3. **Item Creation**: Creates each variable/secret individually
+4. **Progress Tracking**: Updates progress bar and shows detailed status
 
-### `npm run build` fails to minify
+### Variables vs Secrets
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- **Variables**: Stored as plain text, visible in GitHub UI, good for configuration
+- **Secrets**: Encrypted storage using proper libsodium encryption, hidden values, ideal for sensitive data
+- **Note**: Secret encryption uses GitHub's required libsodium encryption for production-ready security.
+
+## API Endpoints Used
+
+- `GET /repos/{owner}/{repo}` - Get repository information
+- `GET /repos/{owner}/{repo}/environments/{environment}` - Check environment
+- `PUT /repos/{owner}/{repo}/environments/{environment}` - Create environment
+- `POST /repositories/{repo_id}/environments/{environment}/variables` - Create variables
+- `POST /repositories/{repo_id}/environments/{environment}/secrets` - Create secrets
+- `GET /repositories/{repo_id}/environments/{environment}/secrets/public-key` - Get encryption key
+
+## Error Handling
+
+The application includes comprehensive error handling:
+- Network connectivity issues
+- Invalid tokens or insufficient permissions
+- Repository or environment access problems
+- Individual item creation failures
+- Detailed error messages with suggested solutions
+
+## Development
+
+### Available Scripts
+
+- `npm start` - Start development server
+- `npm build` - Build for production
+- `npm test` - Run test suite
+- `npm eject` - Eject from Create React App
+
+### Technologies Used
+
+- **React 18** - Frontend framework
+- **Axios** - HTTP client for API calls
+- **Tailwind CSS** - Utility-first CSS framework
+- **Heroicons** - Beautiful SVG icons
+- **libsodium-wrappers** - Proper encryption for GitHub secrets
+- **GitHub REST API v4** - Backend integration
+
+## Production Considerations
+
+When deploying to production:
+
+1. **Security**:
+   - ✅ Proper secret encryption using libsodium (already implemented)
+   - Add input validation and sanitization
+   - Use environment variables for sensitive configuration
+   - Implement rate limiting and CORS policies
+
+2. **Error Handling**:
+   - Add retry mechanisms for failed requests
+   - Implement better error boundary components
+   - Add logging and monitoring
+
+3. **Performance**:
+   - Add request debouncing for form inputs
+   - Implement caching for repository information
+   - Add pagination for large datasets
+
+4. **Accessibility**:
+   - Add proper ARIA labels
+   - Implement keyboard navigation
+   - Test with screen readers
+
+## License
+
+This project is open source and available under the MIT License.
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Support
+
+If you encounter any issues or have questions:
+1. Check the GitHub Issues for existing solutions
+2. Create a new issue with detailed information
+3. Include error messages and steps to reproduce
