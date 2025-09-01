@@ -48,6 +48,17 @@ function App() {
     }
   };
 
+  const clearResults = () => {
+    setResults([]);
+    setProgress({ current: 0, total: 0, status: 'idle' });
+    setShowModal(false);
+    setShowConflictModal(false);
+    setConflictItem(null);
+    setPendingItems([]);
+    setCurrentIndex(0);
+    setProcessingStopped(false);
+  };
+
   const clearForm = () => {
     setFormData({
       token: '',
@@ -57,14 +68,7 @@ function App() {
       type: 'variables'
     });
     setItems([{ name: '', value: '' }]);
-    setResults([]);
-    setProgress({ current: 0, total: 0, status: 'idle' });
-    setShowModal(false);
-    setShowConflictModal(false);
-    setConflictItem(null);
-    setPendingItems([]);
-    setCurrentIndex(0);
-    setProcessingStopped(false);
+    clearResults();
   };
 
   const handleConflictChoice = async (choice) => {
@@ -324,7 +328,8 @@ function App() {
       return;
     }
 
-    // Open modal and reset state
+    // Open modal and reset state (keep form data, just clear results)
+    clearResults(); // Clear previous results and modal state
     setShowModal(true);
     setIsProcessing(true);
     setProcessingStopped(false);
@@ -616,6 +621,22 @@ function App() {
               </div>
             </div>
 
+            {/* Multi-repo Usage Tip */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <InformationCircleIcon className="h-5 w-5 text-blue-600 mt-0.5" />
+                </div>
+                <div className="ml-3">
+                  <h4 className="text-sm font-medium text-blue-900">Multi-Repository Deployment</h4>
+                  <p className="text-xs text-blue-800 mt-1">
+                    Your variables will be preserved after deployment. To deploy the same variables to another repository, 
+                    simply change the <strong>Repository Owner</strong>, <strong>Repository Name</strong>, or <strong>Environment</strong> above and click create again.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Action Buttons */}
             <div className="flex gap-4">
               <button
@@ -629,15 +650,16 @@ function App() {
                     Processing...
                   </>
                 ) : (
-                  `Create ${formData.type === 'secrets' ? 'Secrets' : 'Variables'}`
+                  `Deploy ${formData.type === 'secrets' ? 'Secrets' : 'Variables'}`
                 )}
               </button>
               <button
                 onClick={clearForm}
                 disabled={isProcessing}
                 className="bg-gray-500 text-white py-3 px-6 rounded-lg font-medium hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                title="Clear all form data and start over"
               >
-                Clear
+                Clear All
               </button>
             </div>
           </div>
@@ -695,18 +717,15 @@ function App() {
 
                       {/* Modal Actions */}
           {!isProcessing && results.length > 0 && !showConflictModal && (
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+            <div className="flex justify-between items-center mt-6 pt-4 border-t">
+              <div className="text-sm text-gray-500">
+                Ready to deploy to another repository? Just change the repository details above.
+              </div>
               <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                onClick={clearResults}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
               >
-                Close
-              </button>
-              <button
-                onClick={clearForm}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                Start New
+                Close & Keep Variables
               </button>
             </div>
           )}
